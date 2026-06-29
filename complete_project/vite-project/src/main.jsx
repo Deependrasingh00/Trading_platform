@@ -19,6 +19,7 @@ import Admin from "./pages/Admin.jsx";
 import Adminlogin from "./pages/Adminlogin.jsx";
 import Businesses from "./pages/Businesses.jsx";
 import MaintenanceGuard from "./components/MaintenanceGuard.jsx";
+import SecurityGuard from "./components/SecurityGuard.jsx";
 
 // User protected route - token check on every render
 const ProtectedRoute = ({ children }) => {
@@ -67,8 +68,11 @@ const Router = createBrowserRouter(
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <MaintenanceGuard>
-      <RouterProvider router={Router} />
-    </MaintenanceGuard>
+    <SecurityGuard>
+      <MaintenanceGuard>
+        <RouterProvider router={Router} />
+      </MaintenanceGuard>
+    </SecurityGuard>
   </StrictMode>
 );
+

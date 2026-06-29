@@ -10,6 +10,7 @@ const withdrawalRoutes = require("./routes/withdrawalroutes");
 const adminRoutes = require("./routes/adminroutes");
 const authRoutes = require("./routes/authroutes");
 const depositRoutes = require("./routes/depositroutes");
+const Admin = require("./models/admin");
 
 const app = express();
 const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"].filter(Boolean);
@@ -28,8 +29,21 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
+  .then(async () => {
+    console.log("✅ MongoDB connected");
+    try {
+      const adminCount = await Admin.countDocuments();
+      if (adminCount === 0) {
+        const defaultAdmin = new Admin({ username: "admin", password: "admin123" });
+        await defaultAdmin.save();
+        console.log("🚀 Default admin seeded: username='admin', password='admin123'");
+      }
+    } catch (seedingErr) {
+      console.error("❌ Failed to auto-seed default admin:", seedingErr.message);
+    }
+  })
   .catch((err) => console.error("❌ MongoDB error:", err));
+
 
 app.use("/api/withdrawals", withdrawalRoutes);
 app.use("/api/admin", adminRoutes);

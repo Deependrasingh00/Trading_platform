@@ -5,8 +5,14 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  phone: { type: String, required: true },
+  country: { type: String, required: true },
+  isVerified: { type: Boolean, default: false },
+  otp: { type: String },
+  otpExpires: { type: Date },
   isSuspended: { type: Boolean, default: false }
 }, { timestamps: true });
+
 
 // ✅ Pre-save hook for password hashing
 userSchema.pre('save', async function() {
