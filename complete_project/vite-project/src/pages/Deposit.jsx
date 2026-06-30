@@ -151,7 +151,7 @@ export default function Deposit() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
           {[
             { label: "Total Deposited", value: `₹${totalDeposited.toLocaleString("en-IN")}`, icon: FaRupeeSign, color: "cyan" },
             { label: "Confirmed",       value: confirmedDeposits.length,                       icon: FaCheckCircle, color: "green" },

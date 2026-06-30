@@ -242,7 +242,7 @@ export default function Graph() {
 
         {/* ── Market Stats ──────────────────────────────────────────────────── */}
         {marketData && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {[
               { icon: FaGlobe,      label: "Market Cap",    value: `$${(marketData.total_market_cap.usd / 1e12).toFixed(2)}T`, color: "cyan" },
               { icon: FaCoins,      label: "24h Volume",    value: `$${(marketData.total_volume.usd   / 1e9).toFixed(1)}B`,   color: "blue" },
@@ -302,12 +302,12 @@ export default function Graph() {
           {/* Chart - Center */}
           <div className="col-span-12 lg:col-span-8 bg-white/5 border border-white/10 rounded-2xl p-5">
             {/* Coin selector */}
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap gap-1.5">
                   {COINS.map(c => (
                     <button key={c.id} onClick={() => setSelectedCoin(c.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                         selectedCoin === c.id
                           ? "text-white border"
                           : "bg-white/5 border border-white/10 text-gray-400 hover:text-white"
@@ -317,8 +317,8 @@ export default function Graph() {
                     </button>
                   ))}
                 </div>
-                <div className="flex items-center gap-2 ml-2">
-                  <span className={`text-2xl font-bold ${priceDir === "up" ? "text-green-400" : "text-red-400"}`}>
+                <div className="flex items-center gap-2 sm:ml-2">
+                  <span className={`text-xl sm:text-2xl font-bold ${priceDir === "up" ? "text-green-400" : "text-red-400"}`}>
                     ${livePrice ? Number(livePrice).toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—"}
                   </span>
                   {priceDir === "up"
@@ -326,7 +326,7 @@ export default function Graph() {
                     : <FaArrowDown className="text-red-400" />}
                 </div>
               </div>
-              <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 px-3 py-1.5 rounded-xl">
+              <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 px-3 py-1.5 rounded-xl self-start sm:self-auto">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                 <span className="text-green-400 text-xs font-semibold">LIVE</span>
               </div>
