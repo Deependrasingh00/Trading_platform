@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { FaClock, FaTools, FaBitcoin } from "react-icons/fa";
+import { API_BASE_URL } from "../config";
 
 export default function MaintenanceGuard({ children }) {
   const [maintenance, setMaintenance] = useState(false);
@@ -12,7 +13,7 @@ export default function MaintenanceGuard({ children }) {
 
   const checkStatus = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/admin/settings");
+      const res = await axios.get(`${API_BASE_URL}/api/admin/settings`);
       setMaintenance(!!res.data.maintenanceMode);
     } catch (_) {
       // In case server fails to connect, fallback to false so we don't lock users out
