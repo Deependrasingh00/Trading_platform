@@ -13,8 +13,11 @@ exports.signupUser = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ message: "User already exists" });
 
-    // Generate random 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate random 6-digit OTP (fallback to "123456" if SMTP is not configured)
+    const isSmtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER);
+    const otp = isSmtpConfigured
+      ? Math.floor(100000 + Math.random() * 900000).toString()
+      : "123456";
     const otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
 
     const user = new User({ name, email, password, phone, country, otp, otpExpires, isVerified: false });
@@ -70,8 +73,11 @@ exports.loginUser = async (req, res) => {
 
     // Block login and request OTP verification if not verified
     if (!user.isVerified) {
-      // Regenerate OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Regenerate OTP (fallback to "123456" if SMTP is not configured)
+      const isSmtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER);
+      const otp = isSmtpConfigured
+        ? Math.floor(100000 + Math.random() * 900000).toString()
+        : "123456";
       user.otp = otp;
       user.otpExpires = Date.now() + 10 * 60 * 1000;
       await user.save();
