@@ -238,11 +238,11 @@ export default function Graph() {
         </div>
       </div>
 
-      <div className="px-4 lg:px-8 py-6 max-w-400 mx-auto">
+      <div className="px-4 lg:px-8 py-6 max-w-[1400px] mx-auto">
 
         {/* ── Market Stats ──────────────────────────────────────────────────── */}
         {marketData && (
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {[
               { icon: FaGlobe,      label: "Market Cap",    value: `$${(marketData.total_market_cap.usd / 1e12).toFixed(2)}T`, color: "cyan" },
               { icon: FaCoins,      label: "24h Volume",    value: `$${(marketData.total_volume.usd   / 1e9).toFixed(1)}B`,   color: "blue" },
@@ -360,7 +360,7 @@ export default function Graph() {
               <p className="text-xs text-gray-500 mb-3 flex items-center gap-1">
                 <FaFire className="text-orange-400" /> Top Coins
               </p>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {topMovers.slice(0, 4).map(coin => (
                   <div key={coin.id} className="bg-white/3 border border-white/10 rounded-xl p-3 flex items-center gap-2">
                     <img src={coin.image} alt={coin.name} className="w-7 h-7 rounded-full" />

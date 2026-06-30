@@ -398,7 +398,7 @@ export default function AdminDashboard() {
         {activeTab === "deposits" && (
           <>
             {/* Deposit Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
                 { label: "Total Deposits",   count: depositCounts.total,     color: "cyan",    filterKey: "All" },
                 { label: "Pending",          count: depositCounts.pending,   color: "yellow",  filterKey: "Pending" },
@@ -462,7 +462,7 @@ export default function AdminDashboard() {
                       className="bg-white/5 border border-white/10 hover:border-cyan-500/20 rounded-2xl p-6 transition-all shadow-lg"
                     >
                       <div className="flex flex-col lg:flex-row justify-between gap-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 text-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-1 text-sm">
                           {/* User */}
                           <div>
                             <p className="text-gray-500 text-xs mb-1 flex items-center gap-1"><FaUser className="text-xs" /> User</p>
@@ -540,7 +540,7 @@ export default function AdminDashboard() {
         {activeTab === "withdrawals" && (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
                 { label: "Total",    count: counts.All,      color: "cyan" },
                 { label: "Pending",  count: counts.Pending,  color: "yellow" },
@@ -610,7 +610,7 @@ export default function AdminDashboard() {
                       className="bg-white/5 border border-white/10 hover:border-cyan-500/20 rounded-2xl p-6 transition-all"
                     >
                       <div className="flex flex-col lg:flex-row justify-between gap-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 text-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-1 text-sm">
                           <div>
                             <p className="text-gray-500 text-xs mb-1 flex items-center gap-1"><FaUser className="text-xs" /> User</p>
                             <p className="font-semibold">{req.user}</p>
@@ -712,7 +712,7 @@ export default function AdminDashboard() {
 
         {/* ══════════════ SETTINGS TAB ══════════════ */}
         {activeTab === "settings" && (
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 max-w-lg mx-auto backdrop-blur-lg shadow-2xl">
+          <div className="bg-white/5 border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-8 max-w-lg mx-auto backdrop-blur-lg shadow-2xl">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-400/25 flex items-center justify-center">
                 <FaCog className="text-cyan-400 text-xl" />

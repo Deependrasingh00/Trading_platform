@@ -151,7 +151,7 @@ export default function Deposit() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
           {[
             { label: "Total Deposited", value: `₹${totalDeposited.toLocaleString("en-IN")}`, icon: FaRupeeSign, color: "cyan" },
             { label: "Confirmed",       value: confirmedDeposits.length,                       icon: FaCheckCircle, color: "green" },
@@ -172,7 +172,7 @@ export default function Deposit() {
         <div className="grid lg:grid-cols-2 gap-8">
 
           {/* Deposit Form & Payment QR */}
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-lg shadow-2xl">
+          <div className="bg-white/5 border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-8 backdrop-blur-lg shadow-2xl">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-12 h-12 rounded-2xl bg-cyan-500/15 border border-cyan-400/25 flex items-center justify-center">
                 <FaBitcoin className="text-cyan-400 text-xl" />
@@ -255,7 +255,7 @@ export default function Deposit() {
               {/* Quick amounts */}
               <div>
                 <p className="text-xs text-gray-500 mb-3">Quick Select</p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[1000, 5000, 10000, 25000].map(amt => (
                     <button
                       key={amt}
@@ -338,7 +338,7 @@ export default function Deposit() {
           </div>
 
           {/* Deposit History */}
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-lg">
+          <div className="bg-white/5 border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-8 backdrop-blur-lg">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-2xl bg-blue-500/15 border border-blue-400/25 flex items-center justify-center">
                 <FaHistory className="text-blue-400 text-lg" />
