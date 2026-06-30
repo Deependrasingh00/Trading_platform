@@ -45,6 +45,16 @@ mongoose
   .catch((err) => console.error("❌ MongoDB error:", err));
 
 
+// Database connection status check middleware
+app.use((req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      message: "Database connection is not established. Please check your MONGO_URI environment variable on Render, and make sure your MongoDB Atlas IP whitelist allows access from anywhere (0.0.0.0/0)."
+    });
+  }
+  next();
+});
+
 app.use("/api/withdrawals", withdrawalRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
