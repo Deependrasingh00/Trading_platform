@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
@@ -10,16 +10,24 @@ import {
   Navigate,
 } from "react-router-dom";
 
-import Deposit from "./pages/Deposit.jsx";
-import Developers from "./pages/Developers.jsx";
-import Graph from "./pages/Graph.jsx";
-import Login from "./pages/Login.jsx";
-import Home from "./pages/Home.jsx";
-import Admin from "./pages/Admin.jsx";
-import Adminlogin from "./pages/Adminlogin.jsx";
-import Businesses from "./pages/Businesses.jsx";
 import MaintenanceGuard from "./components/MaintenanceGuard.jsx";
 import SecurityGuard from "./components/SecurityGuard.jsx";
+
+// Lazy load pages to decrease initial bundle size and speed up startup loading
+const Deposit = lazy(() => import("./pages/Deposit.jsx"));
+const Developers = lazy(() => import("./pages/Developers.jsx"));
+const Graph = lazy(() => import("./pages/Graph.jsx"));
+const Login = lazy(() => import("./pages/Login.jsx"));
+const Home = lazy(() => import("./pages/Home.jsx"));
+const Admin = lazy(() => import("./pages/Admin.jsx"));
+const Adminlogin = lazy(() => import("./pages/Adminlogin.jsx"));
+const Businesses = lazy(() => import("./pages/Businesses.jsx"));
+
+const LoadingSpinner = () => (
+  <div className="min-h-screen bg-[#020817] flex items-center justify-center">
+    <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
 
 // User protected route - token check on every render
 const ProtectedRoute = ({ children }) => {
@@ -70,7 +78,9 @@ createRoot(document.getElementById("root")).render(
   <StrictMode>
     <SecurityGuard>
       <MaintenanceGuard>
-        <RouterProvider router={Router} />
+        <Suspense fallback={<LoadingSpinner />}>
+          <RouterProvider router={Router} />
+        </Suspense>
       </MaintenanceGuard>
     </SecurityGuard>
   </StrictMode>
