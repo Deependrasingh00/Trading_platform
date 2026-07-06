@@ -58,22 +58,43 @@ export default function WithdrawalPage() {
   // Live countdown string
   const [countdown, setCountdown] = useState("");
 
+  const userEmail = localStorage.getItem("userEmail");
+  const userName = localStorage.getItem("userName") || "User";
+
   // Warning modal state
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [modalMsg, setModalMsg] = useState("");
   const [modalType, setModalType] = useState("");
   // Track if modal has been shown for current message (to avoid re-showing)
-  const [lastShownMsg, setLastShownMsg] = useState("");
+  const [lastShownMsg, setLastShownMsg] = useState(() => {
+    return userEmail ? (localStorage.getItem(`lastShownMsg_${userEmail}`) || "") : "";
+  });
 
   // Deposit profit data
   const [deposits, setDeposits] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [fetchingDeps, setFetchingDeps] = useState(true);
+  const [screenshot, setScreenshot] = useState("");
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setModalMsg("❌ Image size must be less than 5MB");
+      setModalType("error");
+      setShowWarningModal(true);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setScreenshot(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Ref to track last step and custom message for real-time sound updates
   const lastStateRef = React.useRef({ step: null, msg: "", initialized: false });
-
-  const userEmail = localStorage.getItem("userEmail");
-  const userName = localStorage.getItem("userName") || "User";
 
   // Load saved form
   useEffect(() => {
@@ -94,9 +115,11 @@ export default function WithdrawalPage() {
     if (!userEmail) return;
     fetchStatus(userEmail);
     fetchDeposits(userEmail);
+    fetchTrades(userEmail);
     const interval = setInterval(() => {
       fetchStatus(userEmail);
       fetchDeposits(userEmail);
+      fetchTrades(userEmail);
     }, 5000);
     return () => clearInterval(interval);
   }, [userEmail]);
@@ -140,8 +163,11 @@ export default function WithdrawalPage() {
       setModalType(alertType);
       setShowWarningModal(true);
       setLastShownMsg(alertMsg);
+      if (userEmail) {
+        localStorage.setItem(`lastShownMsg_${userEmail}`, alertMsg);
+      }
     }
-  }, [alertMsg, alertType]);
+  }, [alertMsg, alertType, lastShownMsg, userEmail]);
 
   const fetchDeposits = async (email) => {
     try {
@@ -149,6 +175,13 @@ export default function WithdrawalPage() {
       setDeposits(res.data);
     } catch (_) { }
     finally { setFetchingDeps(false); }
+  };
+
+  const fetchTrades = async (email) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/trades/user/${encodeURIComponent(email)}`);
+      setTrades(res.data);
+    } catch (_) {}
   };
 
   const clearForm = (email) => {
@@ -201,6 +234,7 @@ export default function WithdrawalPage() {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/withdrawals/user/${encodeURIComponent(email)}`);
       const all = res.data;
+      setWithdrawals(all);
       const pending = all
         .filter(r => r.status === "Pending")
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
@@ -297,7 +331,7 @@ export default function WithdrawalPage() {
     }
     setErrors({});
 
-    const maxWithdrawable = totalDeposited + totalProfit;
+    const maxWithdrawable = Math.max(0, totalDeposited + totalTradeProfits - totalOngoingTradesAmount - totalWithdrawn);
     if (Number(amount) > maxWithdrawable) {
       setModalMsg(`🚫 Insufficient Balance!\n\nYou requested a withdrawal of ₹${Number(amount).toLocaleString("en-IN")}, but your maximum withdrawable balance is ₹${maxWithdrawable.toLocaleString("en-IN")}. Please enter a valid amount.`);
       setModalType("error");
@@ -327,7 +361,7 @@ export default function WithdrawalPage() {
           return;
         }
         await axios.post(`${API_BASE_URL}/api/withdrawals`, {
-          userEmail, user: holder, mobile, account, ifsc, amount, step, status: "Pending",
+          userEmail, user: holder, mobile, account, ifsc, amount, step, status: "Pending", screenshotUrl: screenshot,
         });
         const msgs = {
           1: "⏳ Verification Pending\n\nProcessing charge payment has been submitted. Please wait while the audit team reviews your fee payment to advance your transaction.",
@@ -337,15 +371,17 @@ export default function WithdrawalPage() {
         setAlertMsg(msgs[step]);
         setAlertType("info");
         setCurrentStep("pending");
+        setScreenshot("");
         setLoading(false);
         return;
       }
       // First request
       await axios.post(`${API_BASE_URL}/api/withdrawals`, {
-        userEmail, user: holder, mobile, account, ifsc, amount, step: 0, status: "Pending",
+        userEmail, user: holder, mobile, account, ifsc, amount, step: 0, status: "Pending", screenshotUrl: screenshot,
       });
       setAlertMsg("⏳ Initiating Withdrawal...\n\nYour request has been submitted successfully and is currently under review by our audit team. Please wait while your transaction is being initialized.");
       setAlertType("info");
+      setScreenshot("");
       setCurrentStep("pending");
     } catch {
       setAlertMsg("❌ Something went wrong. Please try again.");
@@ -410,12 +446,14 @@ export default function WithdrawalPage() {
     { step: 4, label: "Complete" },
   ];
 
-  // Confirmed deposits with profit
+  // Confirmed deposits and trade profits
   const confirmed = deposits.filter(d => d.status === "Confirmed");
-  const baseProfit = confirmed.reduce((s, d) => s + (d.profitAmount || 0), 0);
-  const totalProfit = currentStep === 4 ? 0 : baseProfit;
   const totalDeposited = confirmed.reduce((s, d) => s + d.amount, 0);
-  const confirmedDeposits = confirmed.filter(d => d.profitPercent > 0);
+  const totalTradeProfits = trades.filter(t => t.status === "completed").reduce((sum, t) => sum + (t.profitAmount || 0), 0);
+  const totalOngoingTradesAmount = trades.filter(t => t.status === "ongoing").reduce((sum, t) => sum + t.amount, 0);
+  const totalWithdrawn = withdrawals.filter(w => w.status === "Approved" && w.step === 4).reduce((sum, w) => sum + w.amount, 0);
+  const totalProfit = currentStep === 4 ? 0 : totalTradeProfits;
+  const completedTrades = trades.filter(t => t.status === "completed" && t.profitAmount > 0);
 
   const mc = modalConfig[modalType] || modalConfig["info"];
 
@@ -618,17 +656,17 @@ export default function WithdrawalPage() {
                   </div>
                   <div className="text-center">
                     <p className="text-gray-500 text-[9px] mb-0.5">Withdrawable</p>
-                    <p className="text-yellow-400 font-bold text-xs sm:text-sm">₹{(totalDeposited + totalProfit).toLocaleString("en-IN")}</p>
+                    <p className="text-yellow-400 font-bold text-xs sm:text-sm">₹{Math.max(0, totalDeposited + totalTradeProfits - totalOngoingTradesAmount - totalWithdrawn).toLocaleString("en-IN")}</p>
                   </div>
                 </div>
               )}
 
-              {/* Per-deposit profit breakdown (very small horizontal scroll or inline wrap) */}
-              {confirmedDeposits.length > 0 && (
+              {/* Per-trade profit breakdown */}
+              {completedTrades.length > 0 && (
                 <div className="mb-3 text-[9px] text-gray-500 flex flex-wrap gap-1.5 max-h-12 overflow-y-auto pr-1">
-                  {confirmedDeposits.map(dep => (
-                    <span key={dep._id} className="bg-white/5 border border-white/10 rounded px-2 py-0.5 shrink-0 select-none">
-                      ₹{dep.amount.toLocaleString("en-IN")} (+₹{(dep.profitAmount || 0).toLocaleString("en-IN")})
+                  {completedTrades.map(trade => (
+                    <span key={trade._id} className="bg-white/5 border border-white/10 rounded px-2 py-0.5 shrink-0 select-none">
+                      {trade.coin.toUpperCase()}: ₹{trade.amount.toLocaleString("en-IN")} (+₹{(trade.profitAmount || 0).toLocaleString("en-IN")})
                     </span>
                   ))}
                 </div>
@@ -664,6 +702,36 @@ export default function WithdrawalPage() {
                 </div>
                 {errors.amount && <p className="text-red-400 text-[10px] mt-0.5 ml-1">{errors.amount}</p>}
               </div>
+
+              {/* Payment Screenshot (Only shown for fee/charge stages 1, 2, 3) */}
+              {(currentStep === 1 || currentStep === 2 || currentStep === 3) && (
+                <div className="mt-3.5">
+                  <label className="text-[10px] text-gray-400 mb-1.5 block uppercase tracking-wider font-semibold">
+                    Fee Payment Screenshot
+                  </label>
+                  <div className="flex flex-col gap-2.5 bg-[#0B1120] border border-white/10 rounded-2xl p-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="text-[10px] text-gray-400 file:bg-cyan-500/10 file:text-cyan-400 file:border-0 file:px-2.5 file:py-1 file:rounded-lg file:cursor-pointer file:font-semibold file:mr-2 hover:file:bg-cyan-500/20"
+                    />
+                    {screenshot && (
+                      <div className="mt-1 relative w-20 h-20 rounded-xl overflow-hidden border border-white/20">
+                        <img src={screenshot} alt="Fee Proof Preview" className="w-full h-full object-cover" />
+                        <button 
+                          type="button" 
+                          onClick={() => setScreenshot("")}
+                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500/80 hover:bg-red-500 text-white flex items-center justify-center text-[9px] font-bold"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-3.5 space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500">Processing time</span>

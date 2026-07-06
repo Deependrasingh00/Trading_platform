@@ -8,6 +8,7 @@ const depositSchema = new mongoose.Schema(
     amount:    { type: Number, required: true },
     status:    { type: String, enum: ["Pending", "Confirmed"], default: "Pending" },
     transactionId: { type: String },
+    screenshotUrl: { type: String, default: "" },
     // Admin sets profit percentage for this deposit
     profitPercent: { type: Number, default: 0 },
     // Calculated profit amount

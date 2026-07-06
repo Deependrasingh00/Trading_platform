@@ -104,12 +104,14 @@ router.get("/users", adminMiddleware, async (req, res) => {
     const User = require("../models/user");
     const Deposit = require("../models/deposit");
     const Withdrawal = require("../models/withdrawal");
+    const Trade = require("../models/trade");
 
     const users = await User.find().select("-password");
     const userList = await Promise.all(users.map(async (u) => {
       const deps = await Deposit.find({ userEmail: u.email });
       const totalDeposited = deps.reduce((sum, d) => sum + d.amount, 0);
-      const totalProfit = deps.filter(d => d.status === "Confirmed").reduce((sum, d) => sum + (d.profitAmount || 0), 0);
+      const userTrades = await Trade.find({ userEmail: u.email, status: "completed" });
+      const totalProfit = userTrades.reduce((sum, t) => sum + (t.profitAmount || 0), 0);
       
       const withdrawals = await Withdrawal.find({ userEmail: u.email });
       const totalWithdrawn = withdrawals.filter(w => w.status === "Approved" && w.step === 4).reduce((sum, w) => sum + w.amount, 0);
@@ -172,6 +174,27 @@ router.delete("/requests/:id", adminMiddleware, async (req, res) => {
 
     await Withdrawal.findByIdAndDelete(req.params.id);
     res.json({ message: "Request deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+// PUT - Increase user profit (creates a completed PROFIT trade)
+router.put("/users/add-profit/:email", adminMiddleware, async (req, res) => {
+  try {
+    const { profitAmount } = req.body;
+    const Trade = require("../models/trade");
+    const newTrade = new Trade({
+      userEmail: req.params.email,
+      amount: 0,
+      coin: "PROFIT",
+      type: "buy",
+      status: "completed",
+      profitAmount: Number(profitAmount),
+      acknowledged: false
+    });
+    await newTrade.save();
+    res.json({ message: "Profit added successfully", trade: newTrade });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }

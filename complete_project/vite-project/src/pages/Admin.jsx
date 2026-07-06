@@ -6,32 +6,34 @@ import ScrollToTop from "../components/ScrollToTop";
 import {
   FaBitcoin, FaCheck, FaTimes, FaSignOutAlt, FaSync,
   FaClock, FaUser, FaRupeeSign, FaWallet, FaPercentage,
-  FaCheckCircle, FaChartLine, FaCog
+  FaCheckCircle, FaChartLine, FaCog, FaCoins
 } from "react-icons/fa";
 
 const STEP_INFO = {
-  0: { label: "New Request",    color: "text-gray-400",   bg: "bg-gray-400/10 border-gray-400/30" },
+  0: { label: "New Request", color: "text-gray-400", bg: "bg-gray-400/10 border-gray-400/30" },
   1: { label: "Charge Pending", color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30" },
-  2: { label: "GST Pending",    color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/30" },
-  3: { label: "Security Charge",color: "text-red-400",    bg: "bg-red-400/10 border-red-400/30" },
-  4: { label: "Complete ✅",    color: "text-green-400",  bg: "bg-green-400/10 border-green-400/30" },
+  2: { label: "GST Pending", color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/30" },
+  3: { label: "Security Charge", color: "text-red-400", bg: "bg-red-400/10 border-red-400/30" },
+  4: { label: "Complete ✅", color: "text-green-400", bg: "bg-green-400/10 border-green-400/30" },
 };
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab]   = useState("withdrawals"); // "withdrawals" | "deposits" | "settings"
-  const [requests, setRequests]     = useState([]);
-  const [deposits, setDeposits]     = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [actionMsg, setActionMsg]   = useState({ text: "", type: "" });
-  const [filter, setFilter]         = useState("All");
+  const [activeTab, setActiveTab] = useState("withdrawals"); // "withdrawals" | "deposits" | "trades" | "users" | "settings"
+  const [requests, setRequests] = useState([]);
+  const [deposits, setDeposits] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionMsg, setActionMsg] = useState({ text: "", type: "" });
+  const [filter, setFilter] = useState("All");
   const [depositFilter, setDepositFilter] = useState("All"); // "All" | "Pending" | "Confirmed"
-  
+  const [tradeFilter, setTradeFilter] = useState("All"); // "All" | "ongoing" | "completed"
+
   // Settings tab state
   const [settingsForm, setSettingsForm] = useState({ upiId: "", qrCodeUrl: "", maintenanceMode: false, announcementBanner: "" });
   const [settingsLoading, setSettingsLoading] = useState(false);
 
   // Profit modal state
-  const [profitModal, setProfitModal] = useState(null); // { depositId, currentAmount }
+  const [profitModal, setProfitModal] = useState(null); // { tradeId, currentAmount }
   const [profitInput, setProfitInput] = useState("");
   const [profitLoading, setProfitLoading] = useState(false);
 
@@ -51,32 +53,32 @@ export default function AdminDashboard() {
   const playNotificationSound = useCallback(() => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      
+
       // Tone 1
       const osc1 = audioCtx.createOscillator();
       const gain1 = audioCtx.createGain();
       osc1.connect(gain1);
       gain1.connect(audioCtx.destination);
-      
+
       osc1.type = "sine";
       osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
       gain1.gain.setValueAtTime(0.08, audioCtx.currentTime);
       gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-      
+
       osc1.start(audioCtx.currentTime);
       osc1.stop(audioCtx.currentTime + 0.15);
-      
+
       // Tone 2
       const osc2 = audioCtx.createOscillator();
       const gain2 = audioCtx.createGain();
       osc2.connect(gain2);
       gain2.connect(audioCtx.destination);
-      
+
       osc2.type = "sine";
       osc2.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.08); // A5
       gain2.gain.setValueAtTime(0.08, audioCtx.currentTime + 0.08);
       gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-      
+
       osc2.start(audioCtx.currentTime + 0.08);
       osc2.stop(audioCtx.currentTime + 0.3);
     } catch (e) {
@@ -126,34 +128,46 @@ export default function AdminDashboard() {
         }
         return res.data;
       });
-    } catch (_) {}
+    } catch (_) { }
   }, [playNotificationSound, showMsg]);
 
   const fetchSettings = useCallback(async () => {
     if (!token()) return;
     try {
       const res = await axios.get(`${API_BASE_URL}/api/admin/settings`);
-      setSettingsForm({ 
-        upiId: res.data.upiId, 
+      setSettingsForm({
+        upiId: res.data.upiId,
         qrCodeUrl: res.data.qrCodeUrl,
         maintenanceMode: res.data.maintenanceMode || false,
         announcementBanner: res.data.announcementBanner || ""
       });
-    } catch (_) {}
+    } catch (_) { }
+  }, []);
+
+  const fetchTrades = useCallback(async () => {
+    if (!token()) return;
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/trades/admin/all`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      setTrades(res.data);
+    } catch (_) { }
   }, []);
 
   useEffect(() => {
     fetchRequests();
     fetchDeposits();
+    fetchTrades();
     fetchSettings();
 
     const interval = setInterval(() => {
       fetchRequests();
       fetchDeposits();
+      fetchTrades();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchRequests, fetchDeposits, fetchSettings]);
+  }, [fetchRequests, fetchDeposits, fetchTrades, fetchSettings]);
 
   const handleApprove = async (id) => {
     try {
@@ -190,13 +204,13 @@ export default function AdminDashboard() {
     setProfitLoading(true);
     try {
       await axios.put(
-        `${API_BASE_URL}/api/deposits/admin/set-profit/${profitModal.depositId}`,
+        `${API_BASE_URL}/api/trades/admin/set-profit/${profitModal.tradeId}`,
         { profitAmount: amt },
         { headers: { Authorization: `Bearer ${token()}` } }
       );
       showMsg(`✅ Profit set to ₹${amt}`, "success");
       setProfitModal(null);
-      fetchDeposits();
+      fetchTrades();
     } catch { showMsg("❌ Failed to set profit", "error"); }
     finally { setProfitLoading(false); }
   };
@@ -230,7 +244,7 @@ export default function AdminDashboard() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
+
     if (file.size > 5 * 1024 * 1024) {
       showMsg("❌ Image size must be less than 5MB", "error");
       return;
@@ -280,17 +294,23 @@ export default function AdminDashboard() {
 
   const filtered = filter === "All" ? requests : requests.filter(r => r.status === filter);
   const counts = {
-    All:      requests.length,
-    Pending:  requests.filter(r => r.status === "Pending").length,
+    All: requests.length,
+    Pending: requests.filter(r => r.status === "Pending").length,
     Approved: requests.filter(r => r.status === "Approved").length,
     Rejected: requests.filter(r => r.status === "Rejected").length,
   };
 
   const depositCounts = {
-    total:     deposits.length,
-    pending:   deposits.filter(d => d.status === "Pending").length,
+    total: deposits.length,
+    pending: deposits.filter(d => d.status === "Pending").length,
     confirmed: deposits.filter(d => d.status === "Confirmed").length,
-    totalAmt:  deposits.reduce((s, d) => s + d.amount, 0),
+    totalAmt: deposits.reduce((s, d) => s + d.amount, 0),
+  };
+
+  const tradeCounts = {
+    total: trades.length,
+    ongoing: trades.filter(t => t.status === "ongoing").length,
+    completed: trades.filter(t => t.status === "completed").length,
   };
 
   return (
@@ -314,11 +334,10 @@ export default function AdminDashboard() {
           <div className="flex gap-2">
             <button
               onClick={() => { setActiveTab("deposits"); setFilter("All"); setDepositFilter("All"); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${
-                activeTab === "deposits"
-                  ? "bg-cyan-500 text-white"
-                  : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${activeTab === "deposits"
+                ? "bg-cyan-500 text-white"
+                : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                }`}
             >
               <FaWallet className="text-xs" /> Deposits
               {depositCounts.pending > 0 && (
@@ -329,11 +348,10 @@ export default function AdminDashboard() {
             </button>
             <button
               onClick={() => { setActiveTab("withdrawals"); setFilter("All"); setDepositFilter("All"); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${
-                activeTab === "withdrawals"
-                  ? "bg-cyan-500 text-white"
-                  : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${activeTab === "withdrawals"
+                ? "bg-cyan-500 text-white"
+                : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                }`}
             >
               <FaChartLine className="text-xs" /> Withdrawals
               {counts.Pending > 0 && (
@@ -343,22 +361,34 @@ export default function AdminDashboard() {
               )}
             </button>
             <button
-              onClick={() => { setActiveTab("users"); setFilter("All"); setDepositFilter("All"); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                activeTab === "users"
-                  ? "bg-cyan-500 text-white"
-                  : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-              }`}
+              onClick={() => { setActiveTab("trades"); setFilter("All"); setDepositFilter("All"); setTradeFilter("All"); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative ${activeTab === "trades"
+                ? "bg-cyan-500 text-white"
+                : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                }`}
+            >
+              <FaCoins className="text-xs" /> Trades
+              {tradeCounts.ongoing > 0 && (
+                <span className="ml-1.5 bg-yellow-500 text-slate-950 font-bold px-1.5 py-0.5 text-[10px] rounded-full shrink-0">
+                  {tradeCounts.ongoing}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab("users"); setFilter("All"); setDepositFilter("All"); setTradeFilter("All"); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${activeTab === "users"
+                ? "bg-cyan-500 text-white"
+                : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                }`}
             >
               <FaUser className="text-xs" /> Users
             </button>
             <button
               onClick={() => { setActiveTab("settings"); setFilter("All"); setDepositFilter("All"); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                activeTab === "settings"
-                  ? "bg-cyan-500 text-white"
-                  : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${activeTab === "settings"
+                ? "bg-cyan-500 text-white"
+                : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                }`}
             >
               <FaCog className="text-xs" /> Settings
             </button>
@@ -366,7 +396,7 @@ export default function AdminDashboard() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => { fetchRequests(); fetchDeposits(); fetchSettings(); }}
+              onClick={() => { fetchRequests(); fetchDeposits(); fetchTrades(); fetchSettings(); }}
               className="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-cyan-400/40 transition-all text-gray-400 hover:text-cyan-400"
             >
               <FaSync className="text-sm" />
@@ -385,11 +415,10 @@ export default function AdminDashboard() {
 
         {/* Action message */}
         {actionMsg.text && (
-          <div className={`mb-6 p-4 rounded-2xl border font-semibold text-center text-sm ${
-            actionMsg.type === "success"
-              ? "bg-green-500/10 border-green-400/30 text-green-400"
-              : "bg-red-500/10 border-red-400/30 text-red-400"
-          }`}>
+          <div className={`mb-6 p-4 rounded-2xl border font-semibold text-center text-sm ${actionMsg.type === "success"
+            ? "bg-green-500/10 border-green-400/30 text-green-400"
+            : "bg-red-500/10 border-red-400/30 text-red-400"
+            }`}>
             {actionMsg.text}
           </div>
         )}
@@ -400,17 +429,16 @@ export default function AdminDashboard() {
             {/* Deposit Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
-                { label: "Total Deposits",   count: depositCounts.total,     color: "cyan",    filterKey: "All" },
-                { label: "Pending",          count: depositCounts.pending,   color: "yellow",  filterKey: "Pending" },
-                { label: "Confirmed",        count: depositCounts.confirmed, color: "green",   filterKey: "Confirmed" },
-                { label: "Total Amount",     count: `₹${depositCounts.totalAmt.toLocaleString("en-IN")}`, color: "purple", filterKey: null },
+                { label: "Total Deposits", count: depositCounts.total, color: "cyan", filterKey: "All" },
+                { label: "Pending", count: depositCounts.pending, color: "yellow", filterKey: "Pending" },
+                { label: "Confirmed", count: depositCounts.confirmed, color: "green", filterKey: "Confirmed" },
+                { label: "Total Amount", count: `₹${depositCounts.totalAmt.toLocaleString("en-IN")}`, color: "purple", filterKey: null },
               ].map(({ label, count, color, filterKey }) => (
-                <div 
+                <div
                   key={label}
                   onClick={() => filterKey && setDepositFilter(filterKey)}
-                  className={`bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-cyan-500/20 transition-all ${
-                    filterKey ? "cursor-pointer hover:bg-white/10" : ""
-                  }`}
+                  className={`bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-cyan-500/20 transition-all ${filterKey ? "cursor-pointer hover:bg-white/10" : ""
+                    }`}
                 >
                   <p className="text-gray-400 text-sm mb-1">{label}</p>
                   <p className={`text-2xl font-bold text-${color}-400`}>{count}</p>
@@ -428,11 +456,10 @@ export default function AdminDashboard() {
                 <button
                   key={key}
                   onClick={() => setDepositFilter(key)}
-                  className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    depositFilter === key
-                      ? "bg-cyan-500 text-white"
-                      : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-                  }`}
+                  className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${depositFilter === key
+                    ? "bg-cyan-500 text-white"
+                    : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                    }`}
                 >
                   {label} ({count})
                 </button>
@@ -492,15 +519,26 @@ export default function AdminDashboard() {
                           {/* Status */}
                           <div>
                             <p className="text-gray-500 text-xs mb-1">Status</p>
-                            <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border ${
-                              dep.status === "Confirmed"
-                                ? "bg-green-400/10 border-green-400/30 text-green-400"
-                                : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
-                            }`}>
+                            <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border ${dep.status === "Confirmed"
+                              ? "bg-green-400/10 border-green-400/30 text-green-400"
+                              : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
+                              }`}>
                               {dep.status}
                             </span>
                           </div>
                         </div>
+
+                        {dep.screenshotUrl && (
+                          <div className="mt-3 bg-[#0B1120] border border-white/5 rounded-xl p-3 flex flex-col gap-1.5 self-start shrink-0">
+                            <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Payment Proof</p>
+                            <a href={dep.screenshotUrl} target="_blank" rel="noopener noreferrer" className="relative block w-28 h-28 rounded-lg overflow-hidden border border-white/10 hover:border-cyan-400/40 group">
+                              <img src={dep.screenshotUrl} alt="Deposit Proof" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[9px] text-white font-bold transition-opacity">
+                                View Full Image
+                              </div>
+                            </a>
+                          </div>
+                        )}
 
                         {/* Actions */}
                         <div className="flex gap-2 items-start shrink-0 flex-wrap">
@@ -512,15 +550,9 @@ export default function AdminDashboard() {
                               <FaCheck /> Confirm Deposit
                             </button>
                           ) : (
-                            <button
-                              onClick={() => {
-                                setProfitModal({ depositId: dep._id, currentAmount: dep.profitAmount });
-                                setProfitInput(String(dep.profitAmount || ""));
-                              }}
-                              className="flex items-center gap-2 bg-purple-500/10 border border-purple-400/30 hover:bg-purple-500/20 text-purple-400 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                            >
-                              <FaPercentage /> Set Profit (₹)
-                            </button>
+                            <span className="text-green-400 flex items-center gap-1.5 text-xs font-semibold bg-green-500/10 border border-green-500/20 px-4 py-2.5 rounded-xl">
+                              <FaCheckCircle className="text-green-400" /> Confirmed
+                            </span>
                           )}
                         </div>
                       </div>
@@ -542,8 +574,8 @@ export default function AdminDashboard() {
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {[
-                { label: "Total",    count: counts.All,      color: "cyan" },
-                { label: "Pending",  count: counts.Pending,  color: "yellow" },
+                { label: "Total", count: counts.All, color: "cyan" },
+                { label: "Pending", count: counts.Pending, color: "yellow" },
                 { label: "Approved", count: counts.Approved, color: "green" },
                 { label: "Rejected", count: counts.Rejected, color: "red" },
               ].map(({ label, count, color }) => (
@@ -561,11 +593,10 @@ export default function AdminDashboard() {
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
-                    className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      filter === f
-                        ? "bg-cyan-500 text-white"
-                        : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
-                    }`}
+                    className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${filter === f
+                      ? "bg-cyan-500 text-white"
+                      : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                      }`}
                   >
                     {f} ({counts[f] || 0})
                   </button>
@@ -614,6 +645,7 @@ export default function AdminDashboard() {
                           <div>
                             <p className="text-gray-500 text-xs mb-1 flex items-center gap-1"><FaUser className="text-xs" /> User</p>
                             <p className="font-semibold">{req.user}</p>
+                            <p className="text-gray-500 text-xs">{req.userEmail}</p>
                             <p className="text-gray-500 text-xs">{req.mobile}</p>
                           </div>
                           <div>
@@ -627,11 +659,10 @@ export default function AdminDashboard() {
                           </div>
                           <div>
                             <p className="text-gray-500 text-xs mb-1">Status & Step</p>
-                            <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border ${
-                              req.status === "Approved" ? "bg-green-400/10 border-green-400/30 text-green-400"
+                            <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border ${req.status === "Approved" ? "bg-green-400/10 border-green-400/30 text-green-400"
                               : req.status === "Rejected" ? "bg-red-400/10 border-red-400/30 text-red-400"
-                              : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
-                            }`}>
+                                : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
+                              }`}>
                               {req.status}
                             </span>
                             <span className={`inline-block ml-2 text-xs font-semibold px-3 py-1 rounded-full border ${stepInfo.bg} ${stepInfo.color}`}>
@@ -640,6 +671,18 @@ export default function AdminDashboard() {
                             <p className={`text-xs mt-1 ${stepInfo.color}`}>{stepInfo.label}</p>
                           </div>
                         </div>
+
+                        {req.screenshotUrl && (
+                          <div className="mt-3 bg-[#0B1120] border border-white/5 rounded-xl p-3 flex flex-col gap-1.5 self-start shrink-0">
+                            <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Fee Payment Proof (Screenshot)</p>
+                            <a href={req.screenshotUrl} target="_blank" rel="noopener noreferrer" className="relative block w-28 h-28 rounded-lg overflow-hidden border border-white/10 hover:border-cyan-400/40 group">
+                              <img src={req.screenshotUrl} alt="Fee Proof" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[9px] text-white font-bold transition-opacity">
+                                View Full Image
+                              </div>
+                            </a>
+                          </div>
+                        )}
 
                         {req.status === "Pending" ? (
                           <div className="flex gap-2 items-start shrink-0">
@@ -690,6 +733,44 @@ export default function AdminDashboard() {
                             className="bg-cyan-500/15 border border-cyan-400/30 hover:bg-cyan-500/25 text-cyan-400 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 shrink-0"
                           >
                             {msgSending[req._id] ? "Sending..." : "Send"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Increase User Profit Option */}
+                      <div className="mt-4 pt-4 border-t border-white/8">
+                        <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wider">💰 Increase User Profit Balance</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            placeholder="Enter profit amount e.g. 5000"
+                            id={`profit_input_${req._id}`}
+                            className="bg-[#0B1120] border border-white/10 focus:border-cyan-400/50 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 outline-none transition-all flex-1"
+                          />
+                          <button
+                            onClick={async () => {
+                              const inputEl = document.getElementById(`profit_input_${req._id}`);
+                              const amount = inputEl ? inputEl.value : "";
+                              if (!amount || Number(amount) <= 0) {
+                                showMsg("❌ Please enter a valid profit amount", "error");
+                                return;
+                              }
+                              try {
+                                await axios.put(`${API_BASE_URL}/api/admin/users/add-profit/${encodeURIComponent(req.userEmail)}`, {
+                                  profitAmount: Number(amount)
+                                }, {
+                                  headers: { Authorization: `Bearer ${token()}` }
+                                });
+                                showMsg(`✅ Successfully added ₹${Number(amount).toLocaleString()} profit to ${req.userEmail}!`, "success");
+                                if (inputEl) inputEl.value = "";
+                                fetchRequests();
+                              } catch {
+                                showMsg("❌ Failed to add profit", "error");
+                              }
+                            }}
+                            className="bg-green-500/15 border border-green-400/30 hover:bg-green-500/25 text-green-400 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 cursor-pointer"
+                          >
+                            Add Profit
                           </button>
                         </div>
                       </div>
@@ -814,6 +895,134 @@ export default function AdminDashboard() {
             </form>
           </div>
         )}
+
+        {/* ══════════════ TRADES TAB ══════════════ */}
+        {activeTab === "trades" && (
+          <>
+            {/* Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {[
+                { label: "Total Trades", count: tradeCounts.total, color: "cyan", filterKey: "All" },
+                { label: "Ongoing", count: tradeCounts.ongoing, color: "yellow", filterKey: "ongoing" },
+                { label: "Completed", count: tradeCounts.completed, color: "green", filterKey: "completed" },
+              ].map(({ label, count, color, filterKey }) => (
+                <div
+                  key={label}
+                  onClick={() => filterKey && setTradeFilter(filterKey)}
+                  className={`bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-cyan-500/20 transition-all ${filterKey ? "cursor-pointer hover:bg-white/10" : ""
+                    }`}
+                >
+                  <p className="text-gray-400 text-sm mb-1">{label}</p>
+                  <p className={`text-2xl font-bold text-${color}-400`}>{count}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex gap-2 mb-6 flex-wrap">
+              {[
+                { key: "All", label: "All Trades", count: tradeCounts.total },
+                { key: "ongoing", label: "Ongoing (Action Required)", count: tradeCounts.ongoing },
+                { key: "completed", label: "Completed", count: tradeCounts.completed },
+              ].map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setTradeFilter(key)}
+                  className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${tradeFilter === key
+                    ? "bg-cyan-500 text-white"
+                    : "bg-white/5 border border-white/10 text-gray-400 hover:border-cyan-400/40 hover:text-cyan-400"
+                    }`}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+
+            {/* Trades list */}
+            {(() => {
+              const filteredTrades = tradeFilter === "All"
+                ? trades
+                : trades.filter(t => t.status === tradeFilter);
+
+              if (filteredTrades.length === 0) {
+                return (
+                  <div className="text-center py-32 text-gray-500 bg-white/2 border border-white/5 rounded-2xl w-full">
+                    <FaClock className="text-5xl mx-auto mb-4 opacity-30" />
+                    <p>No trades found in this category.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-4">
+                  {filteredTrades.map((trade) => (
+                    <div
+                      key={trade._id}
+                      className="bg-white/5 border border-white/10 hover:border-cyan-500/20 rounded-2xl p-6 transition-all"
+                    >
+                      <div className="flex flex-col lg:flex-row justify-between gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-1 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1 flex items-center gap-1">
+                              <FaUser className="text-xs" /> User Email
+                            </p>
+                            <p className="font-semibold">{trade.userEmail}</p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">ID: {trade._id}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">Asset & Type</p>
+                            <span className="font-bold text-white uppercase">{trade.coin}</span>
+                            <span className={`inline-block ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${trade.type === "buy" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                              }`}>
+                              {trade.type}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">Trade Amount</p>
+                            <p className="font-bold text-cyan-400 text-base">₹{trade.amount.toLocaleString("en-IN")}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs mb-1">Status & Profit</p>
+                            <span className={`inline-block text-xs font-semibold px-3 py-1 rounded-full border ${trade.status === "completed"
+                              ? "bg-green-400/10 border-green-400/30 text-green-400"
+                              : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
+                              }`}>
+                              {trade.status === "completed" ? "Completed" : "Ongoing ⏳"}
+                            </span>
+                            {trade.status === "completed" && (
+                              <p className="text-green-400 font-bold text-xs mt-1">
+                                Profit: +₹{trade.profitAmount.toLocaleString("en-IN")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2 items-start shrink-0 flex-wrap">
+                          {trade.status === "ongoing" && (
+                            <button
+                              onClick={() => {
+                                setProfitModal({ tradeId: trade._id, currentAmount: trade.profitAmount });
+                                setProfitInput(String(trade.profitAmount || ""));
+                              }}
+                              className="flex items-center gap-2 bg-purple-500/10 border border-purple-400/30 hover:bg-purple-500/20 text-purple-400 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer"
+                            >
+                              <FaPercentage /> Set Profit (₹)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-3 border-t border-white/5 text-xs text-gray-600">
+                        Placed: {new Date(trade.createdAt).toLocaleString("en-IN")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </>
+        )}
       </div>
 
       {/* ══════════════ PROFIT MODAL ══════════════ */}
@@ -864,11 +1073,10 @@ export default function AdminDashboard() {
                 <button
                   key={amt}
                   onClick={() => setProfitInput(String(amt))}
-                  className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                    profitInput === String(amt)
-                      ? "bg-purple-500/20 border-purple-400/50 text-purple-400"
-                      : "bg-white/5 border-white/10 text-gray-400 hover:border-purple-400/30 hover:text-purple-400"
-                  }`}
+                  className={`py-2 rounded-xl text-xs font-semibold border transition-all ${profitInput === String(amt)
+                    ? "bg-purple-500/20 border-purple-400/50 text-purple-400"
+                    : "bg-white/5 border-white/10 text-gray-400 hover:border-purple-400/30 hover:text-purple-400"
+                    }`}
                 >
                   ₹{amt}
                 </button>
@@ -925,7 +1133,7 @@ function AdminUsersTab({ token, showMsg }) {
 
   const handleToggleStatus = async (id, currentStatus) => {
     try {
-      await axios.put(`${API_BASE_URL}/api/admin/users/status/${id}`, 
+      await axios.put(`${API_BASE_URL}/api/admin/users/status/${id}`,
         { isSuspended: !currentStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -936,8 +1144,8 @@ function AdminUsersTab({ token, showMsg }) {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name?.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -1010,28 +1218,26 @@ function AdminUsersTab({ token, showMsg }) {
                         try {
                           const timestamp = parseInt(user._id.substring(0, 8), 16) * 1000;
                           return new Date(timestamp).toLocaleDateString("en-IN");
-                        } catch (_) {}
+                        } catch (_) { }
                       }
                       return "—";
                     })()}
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      user.isSuspended 
-                        ? "bg-red-400/10 border-red-400/30 text-red-400" 
-                        : "bg-green-400/10 border-green-400/30 text-green-400"
-                    }`}>
+                    <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${user.isSuspended
+                      ? "bg-red-400/10 border-red-400/30 text-red-400"
+                      : "bg-green-400/10 border-green-400/30 text-green-400"
+                      }`}>
                       {user.isSuspended ? "Suspended" : "Active"}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => handleToggleStatus(user._id, user.isSuspended)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                        user.isSuspended
-                          ? "bg-green-500/15 border-green-400/30 text-green-400 hover:bg-green-500/25"
-                          : "bg-red-500/15 border-red-400/30 text-red-400 hover:bg-red-500/25"
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${user.isSuspended
+                        ? "bg-green-500/15 border-green-400/30 text-green-400 hover:bg-green-500/25"
+                        : "bg-red-500/15 border-red-400/30 text-red-400 hover:bg-red-500/25"
+                        }`}
                     >
                       {user.isSuspended ? "Activate" : "Suspend"}
                     </button>

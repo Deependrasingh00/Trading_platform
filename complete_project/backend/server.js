@@ -10,6 +10,7 @@ const withdrawalRoutes = require("./routes/withdrawalroutes");
 const adminRoutes = require("./routes/adminroutes");
 const authRoutes = require("./routes/authroutes");
 const depositRoutes = require("./routes/depositroutes");
+const tradeRoutes = require("./routes/traderoutes");
 const Admin = require("./models/admin");
 
 const app = express();
@@ -59,6 +60,7 @@ app.use("/api/withdrawals", withdrawalRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/deposits", depositRoutes);
+app.use("/api/trades", tradeRoutes);
 
 // Serve static files from the React frontend build
 app.use(express.static(path.join(__dirname, "../vite-project/dist")));

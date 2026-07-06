@@ -6,11 +6,11 @@ const adminMiddleware = require("../middleware/adminmiddleware");
 // POST - User submits a deposit
 router.post("/", async (req, res) => {
   try {
-    const { userEmail, userName, mobile, amount, transactionId } = req.body;
+    const { userEmail, userName, mobile, amount, transactionId, screenshotUrl } = req.body;
     if (!userEmail || !amount) {
       return res.status(400).json({ message: "userEmail and amount are required" });
     }
-    const deposit = new Deposit({ userEmail, userName, mobile, amount, transactionId });
+    const deposit = new Deposit({ userEmail, userName, mobile, amount, transactionId, screenshotUrl });
     await deposit.save();
     res.json({ message: "Deposit submitted successfully", deposit });
   } catch (err) {

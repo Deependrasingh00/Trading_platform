@@ -11,43 +11,60 @@ export default function Deposit() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ text: "", type: "" });
   const [deposits, setDeposits] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [fetchingHistory, setFetchingHistory] = useState(true);
-  
+  const [screenshot, setScreenshot] = useState("");
+
   const [settings, setSettings] = useState({ upiId: "", qrCodeUrl: "" });
   const [copying, setCopying] = useState(false);
 
   const userEmail = localStorage.getItem("userEmail") || "";
-  const userName  = localStorage.getItem("userName")  || "User";
+  const userName = localStorage.getItem("userName") || "User";
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showMsg("❌ Image size must be less than 5MB", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setScreenshot(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const playNotificationSound = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      
+
       // Tone 1
       const osc1 = audioCtx.createOscillator();
       const gain1 = audioCtx.createGain();
       osc1.connect(gain1);
       gain1.connect(audioCtx.destination);
-      
+
       osc1.type = "sine";
       osc1.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
       gain1.gain.setValueAtTime(0.08, audioCtx.currentTime);
       gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-      
+
       osc1.start(audioCtx.currentTime);
       osc1.stop(audioCtx.currentTime + 0.15);
-      
+
       // Tone 2
       const osc2 = audioCtx.createOscillator();
       const gain2 = audioCtx.createGain();
       osc2.connect(gain2);
       gain2.connect(audioCtx.destination);
-      
+
       osc2.type = "sine";
       osc2.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.08); // A5
       gain2.gain.setValueAtTime(0.08, audioCtx.currentTime + 0.08);
       gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-      
+
       osc2.start(audioCtx.currentTime + 0.08);
       osc2.stop(audioCtx.currentTime + 0.3);
     } catch (e) {
@@ -71,22 +88,42 @@ export default function Deposit() {
         }
         return res.data;
       });
-    } catch (_) {}
+    } catch (_) { }
     finally { setFetchingHistory(false); }
+  };
+
+  const fetchTrades = async () => {
+    if (!userEmail) return;
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/trades/user/${encodeURIComponent(userEmail)}`);
+      setTrades(res.data);
+    } catch (_) { }
+  };
+
+  const fetchWithdrawals = async () => {
+    if (!userEmail) return;
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/withdrawals/user/${encodeURIComponent(userEmail)}`);
+      setWithdrawals(res.data);
+    } catch (_) { }
   };
 
   const fetchSettings = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/admin/settings`);
       setSettings(res.data);
-    } catch (_) {}
+    } catch (_) { }
   };
 
   useEffect(() => {
     fetchHistory();
+    fetchTrades();
+    fetchWithdrawals();
     fetchSettings();
     const interval = setInterval(() => {
       fetchHistory();
+      fetchTrades();
+      fetchWithdrawals();
       fetchSettings();
     }, 5000);
     return () => clearInterval(interval);
@@ -113,9 +150,11 @@ export default function Deposit() {
         mobile: form.mobile,
         amount: Number(form.amount),
         transactionId: form.transactionId.trim(),
+        screenshotUrl: screenshot,
       });
       showMsg("✅ Deposit request submitted successfully!", "success");
       setForm({ amount: "", mobile: "", transactionId: "" });
+      setScreenshot("");
       fetchHistory();
     } catch (err) {
       showMsg(err.response?.data?.message || "❌ Something went wrong", "error");
@@ -126,7 +165,10 @@ export default function Deposit() {
 
   const totalDeposited = deposits.reduce((sum, d) => sum + d.amount, 0);
   const confirmedDeposits = deposits.filter(d => d.status === "Confirmed");
-  const totalProfit = confirmedDeposits.reduce((sum, d) => sum + (d.profitAmount || 0), 0);
+  const totalProfit = trades.filter(t => t.status === "completed").reduce((sum, t) => sum + (t.profitAmount || 0), 0);
+  const totalWithdrawn = withdrawals.filter(w => w.status === "Approved" && w.step === 4).reduce((sum, w) => sum + w.amount, 0);
+  const totalOngoingTradesAmount = trades.filter(t => t.status === "ongoing").reduce((sum, t) => sum + t.amount, 0);
+  const availableBalance = totalDeposited + totalProfit - totalOngoingTradesAmount - totalWithdrawn;
 
   return (
     <div className="bg-[#020817] text-white min-h-screen">
@@ -154,8 +196,8 @@ export default function Deposit() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
           {[
             { label: "Total Deposited", value: `₹${totalDeposited.toLocaleString("en-IN")}`, icon: FaRupeeSign, color: "cyan" },
-            { label: "Confirmed",       value: confirmedDeposits.length,                       icon: FaCheckCircle, color: "green" },
-            { label: "Total Profit",    value: `₹${totalProfit.toLocaleString("en-IN")}`,      icon: FaShieldAlt, color: "yellow" },
+            { label: "Available Balance", value: `₹${availableBalance.toLocaleString("en-IN")}`, icon: FaCheckCircle, color: "green" },
+            { label: "Total Profit", value: `₹${totalProfit.toLocaleString("en-IN")}`, icon: FaShieldAlt, color: "yellow" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4 hover:border-cyan-500/20 transition-all duration-300">
               <div className={`w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-400/20 flex items-center justify-center text-cyan-400 text-base shrink-0`}>
@@ -186,7 +228,7 @@ export default function Deposit() {
             {/* UPI / QR Code Payment Card */}
             <div className="bg-slate-950/50 border border-white/5 rounded-2xl p-6 mb-6 flex flex-col items-center">
               <p className="text-xs text-gray-400 uppercase tracking-widest mb-4 font-semibold text-center">Scan QR Code or copy UPI to Pay</p>
-              
+
               {settings.qrCodeUrl ? (
                 <div className="bg-white p-3 rounded-xl shadow-lg mb-4 relative group transition-all duration-300 hover:scale-105">
                   <img src={settings.qrCodeUrl} alt="UPI QR Code" className="w-44 h-44 object-contain rounded-lg" />
@@ -209,11 +251,10 @@ export default function Deposit() {
                       setTimeout(() => setCopying(false), 2000);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${
-                    copying 
-                      ? "bg-green-500/20 text-green-400 border border-green-400/30" 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0 ${copying
+                      ? "bg-green-500/20 text-green-400 border border-green-400/30"
                       : "bg-cyan-500/10 text-cyan-400 border border-cyan-400/20 hover:bg-cyan-500/20"
-                  }`}
+                    }`}
                 >
                   {copying ? "Copied!" : "Copy"}
                 </button>
@@ -222,11 +263,10 @@ export default function Deposit() {
 
             {/* Alert */}
             {msg.text && (
-              <div className={`mb-6 p-4 rounded-2xl border text-sm font-semibold text-center ${
-                msg.type === "success"
+              <div className={`mb-6 p-4 rounded-2xl border text-sm font-semibold text-center ${msg.type === "success"
                   ? "bg-green-500/10 border-green-400/30 text-green-400"
                   : "bg-red-500/10 border-red-400/30 text-red-400"
-              }`}>
+                }`}>
                 {msg.text}
               </div>
             )}
@@ -261,11 +301,10 @@ export default function Deposit() {
                       key={amt}
                       type="button"
                       onClick={() => setForm({ ...form, amount: amt })}
-                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                        Number(form.amount) === amt
+                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${Number(form.amount) === amt
                           ? "bg-cyan-500/20 border-cyan-400/50 text-cyan-400"
                           : "bg-white/5 border-white/10 text-gray-400 hover:border-cyan-400/30 hover:text-cyan-400"
-                      }`}
+                        }`}
                     >
                       ₹{amt.toLocaleString("en-IN")}
                     </button>
@@ -307,6 +346,33 @@ export default function Deposit() {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1 ml-1">Must match the exact transaction reference to authorize confirmation.</p>
+              </div>
+
+              {/* Payment Screenshot */}
+              <div>
+                <label className="text-xs text-gray-400 mb-2 block uppercase tracking-wider font-semibold">
+                  Payment Screenshot
+                </label>
+                <div className="flex flex-col gap-3 bg-[#0B1120] border border-white/10 rounded-2xl p-4 transition-all">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="text-xs text-gray-400 file:bg-cyan-500/10 file:text-cyan-400 file:border-0 file:px-3 file:py-1.5 file:rounded-xl file:cursor-pointer file:font-semibold file:mr-3 hover:file:bg-cyan-500/20"
+                  />
+                  {screenshot && (
+                    <div className="mt-1 relative w-24 h-24 rounded-xl overflow-hidden border border-white/20">
+                      <img src={screenshot} alt="Screenshot Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setScreenshot("")}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500/80 hover:bg-red-500 text-white flex items-center justify-center text-[10px] font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
@@ -367,11 +433,10 @@ export default function Deposit() {
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs ${
-                          dep.status === "Confirmed"
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs ${dep.status === "Confirmed"
                             ? "bg-green-500/15 text-green-400"
                             : "bg-yellow-500/15 text-yellow-400"
-                        }`}>
+                          }`}>
                           {dep.status === "Confirmed" ? <FaCheckCircle /> : <FaClock />}
                         </div>
                         <div>
@@ -379,11 +444,10 @@ export default function Deposit() {
                           <p className="text-gray-500 text-xs">{new Date(dep.createdAt).toLocaleDateString("en-IN")}</p>
                         </div>
                       </div>
-                      <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-                        dep.status === "Confirmed"
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${dep.status === "Confirmed"
                           ? "bg-green-400/10 border-green-400/30 text-green-400"
                           : "bg-yellow-400/10 border-yellow-400/30 text-yellow-400"
-                      }`}>
+                        }`}>
                         {dep.status}
                       </span>
                     </div>
@@ -396,14 +460,6 @@ export default function Deposit() {
                       </div>
                     )}
 
-                    {dep.status === "Confirmed" && (
-                      <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between">
-                        <span className="text-gray-500 text-xs font-semibold">Profit Earned</span>
-                        <span className="text-green-400 font-bold text-sm">
-                          +₹{(dep.profitAmount || 0).toLocaleString("en-IN")}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

@@ -3,7 +3,7 @@ const Withdrawal = require("../models/withdrawal");
 // User: naya withdrawal request banao
 exports.createWithdrawal = async (req, res) => {
   try {
-    const { userEmail, user, mobile, account, ifsc, amount, step, status } = req.body;
+    const { userEmail, user, mobile, account, ifsc, amount, step, status, screenshotUrl } = req.body;
 
     if (!userEmail) {
       return res.status(400).json({ message: "userEmail is required" });
@@ -18,6 +18,7 @@ exports.createWithdrawal = async (req, res) => {
       amount,
       step: step ?? 0,
       status: status ?? "Pending",
+      screenshotUrl: screenshotUrl || ""
     });
 
     await newReq.save();

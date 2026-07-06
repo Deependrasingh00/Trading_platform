@@ -51,11 +51,29 @@ export default function Header() {
         return;
       }
 
-      const res = await axios.get(`${API_BASE_URL}/api/deposits/user/${encodeURIComponent(userEmail)}`);
-      const confirmed = res.data.filter(d => d.status === "Confirmed");
-      const totalProfit = confirmed.reduce((sum, d) => sum + (d.profitAmount || 0), 0);
+      // Calculate balance based on deposits and trades
+      const [depRes, tradeRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/deposits/user/${encodeURIComponent(userEmail)}`),
+        axios.get(`${API_BASE_URL}/api/trades/user/${encodeURIComponent(userEmail)}`)
+      ]);
+
+      const confirmed = depRes.data.filter(d => d.status === "Confirmed");
       const totalDeposited = confirmed.reduce((sum, d) => sum + d.amount, 0);
-      setUserProfit(totalDeposited + totalProfit);
+
+      const totalOngoingTradesAmount = tradeRes.data
+        .filter(t => t.status === "ongoing")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const totalTradeProfits = tradeRes.data
+        .filter(t => t.status === "completed")
+        .reduce((sum, t) => sum + (t.profitAmount || 0), 0);
+
+      const totalWithdrawn = allW
+        .filter(w => w.status === "Approved" && w.step === 4)
+        .reduce((sum, w) => sum + w.amount, 0);
+
+      const currentBalance = totalDeposited + totalTradeProfits - totalOngoingTradesAmount - totalWithdrawn;
+      setUserProfit(currentBalance >= 0 ? currentBalance : 0);
     } catch (_) {}
   };
 

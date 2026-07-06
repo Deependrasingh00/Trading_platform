@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 import { Line } from "react-chartjs-2";
 import { Chart as ChartJS } from "chart.js/auto";
 import {
   FaBitcoin, FaArrowUp, FaArrowDown, FaChartLine,
-  FaGlobe, FaCoins, FaFire, FaBolt,
+  FaGlobe, FaCoins, FaFire, FaBolt, FaRupeeSign,
+  FaCheckCircle, FaClock, FaExclamationTriangle
 } from "react-icons/fa";
 
 // Live order book fake data generator
@@ -22,6 +24,39 @@ const COINS = [
   { id: "ripple",   symbol: "XRP", name: "XRP",      color: "#346AA9" },
 ];
 
+const crosshairPlugin = {
+  id: "crosshair",
+  afterDraw: (chart) => {
+    if (chart.tooltip?._active && chart.tooltip._active.length) {
+      const activePoint = chart.tooltip._active[0];
+      const ctx = chart.ctx;
+      const x = activePoint.element.x;
+      const y = activePoint.element.y;
+      const topY = chart.scales.y.top;
+      const bottomY = chart.scales.y.bottom;
+      const leftX = chart.scales.x.left;
+      const rightX = chart.scales.x.right;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+      ctx.lineWidth = 1;
+
+      // Vertical line
+      ctx.moveTo(x, topY);
+      ctx.lineTo(x, bottomY);
+
+      // Horizontal line
+      ctx.moveTo(leftX, y);
+      ctx.lineTo(rightX, y);
+
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+};
+
 export default function Graph() {
   const [prices, setPrices]       = useState({});
   const [chartData, setChartData] = useState(null);
@@ -35,70 +70,141 @@ export default function Graph() {
   const prevPrice = useRef(null);
   const tradesRef = useRef([]);
 
-  const userEmail = localStorage.getItem("userEmail") || "demo@cryptox.com";
+  const userEmail = localStorage.getItem("userEmail") || "";
 
-  // Simulated Portfolio state
-  const [portfolio, setPortfolio] = useState(() => {
-    const saved = localStorage.getItem(`portfolio_${userEmail}`);
-    if (saved) return JSON.parse(saved);
-    return {
-      usd: 10000,
-      btc: 0,
-      eth: 0,
-      sol: 0,
-      xrp: 0
-    };
-  });
+  // Real data state
+  const [deposits, setDeposits] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [userTrades, setUserTrades] = useState([]);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   const [tradeType, setTradeType] = useState("buy");
   const [tradeAmount, setTradeAmount] = useState("");
   const [tradeCoin, setTradeCoin] = useState("bitcoin");
   const [tradeMsg, setTradeMsg] = useState({ text: "", type: "" });
+  const [timeframe, setTimeframe] = useState("24H"); // "1H" | "24H" | "1W" | "30D"
 
-  // Save portfolio to localStorage
+  const [countdown, setCountdown] = useState(null); // { minutes: number, seconds: number }
+  const [showCongratulations, setShowCongratulations] = useState(null); //Completed trade object
+
+  // Fetch statistics/balance
+  const fetchUserStats = async () => {
+    if (!userEmail) return;
+    try {
+      const [depRes, withRes, tradeRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/deposits/user/${encodeURIComponent(userEmail)}`),
+        axios.get(`${API_BASE_URL}/api/withdrawals/user/${encodeURIComponent(userEmail)}`),
+        axios.get(`${API_BASE_URL}/api/trades/user/${encodeURIComponent(userEmail)}`)
+      ]);
+      setDeposits(depRes.data);
+      setWithdrawals(withRes.data);
+      setUserTrades(tradeRes.data);
+    } catch (err) {
+      console.error("Error fetching user stats", err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Poll stats every 5 seconds
   useEffect(() => {
-    localStorage.setItem(`portfolio_${userEmail}`, JSON.stringify(portfolio));
-  }, [portfolio, userEmail]);
+    fetchUserStats();
+    const interval = setInterval(fetchUserStats, 5000);
+    return () => clearInterval(interval);
+  }, [userEmail]);
 
-  const handleTrade = (e) => {
+  // Available balance logic
+  const confirmedDeps = deposits.filter(d => d.status === "Confirmed");
+  const totalDeposited = confirmedDeps.reduce((sum, d) => sum + d.amount, 0);
+  const totalWithdrawn = withdrawals
+    .filter(w => w.status === "Approved" && w.step === 4)
+    .reduce((sum, w) => sum + w.amount, 0);
+  const totalOngoingTradesAmount = userTrades
+    .filter(t => t.status === "ongoing")
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalTradeProfits = userTrades
+    .filter(t => t.status === "completed")
+    .reduce((sum, t) => sum + (t.profitAmount || 0), 0);
+
+  const availableBalance = totalDeposited + totalTradeProfits - totalOngoingTradesAmount - totalWithdrawn;
+
+  // Most recent ongoing trade timer
+  const ongoingTrades = userTrades.filter(t => t.status === "ongoing");
+  const latestOngoingTrade = ongoingTrades[0]; // userTrades is sorted desc by createdAt in DB
+
+  useEffect(() => {
+    if (!latestOngoingTrade) {
+      setCountdown(null);
+      return;
+    }
+    const updateTimer = () => {
+      const createdTime = new Date(latestOngoingTrade.createdAt).getTime();
+      const endTime = createdTime + 60 * 60 * 1000; // 60 minutes
+      const diff = endTime - Date.now();
+      if (diff <= 0) {
+        setCountdown({ minutes: 0, seconds: 0 });
+        fetchUserStats();
+      } else {
+        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((diff % (1000 * 60)) / 1000);
+        setCountdown({ minutes: m, seconds: s });
+      }
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [latestOngoingTrade]);
+
+  // Congratulate popup checker
+  useEffect(() => {
+    const unacknowledged = userTrades.find(t => t.status === "completed" && !t.acknowledged);
+    if (unacknowledged && !showCongratulations) {
+      setShowCongratulations(unacknowledged);
+    }
+  }, [userTrades]);
+
+  // Acknowledge popup handler
+  const handleAcknowledgeTrade = async (tradeId) => {
+    try {
+      await axios.put(`${API_BASE_URL}/api/trades/acknowledge/${tradeId}`);
+      setShowCongratulations(null);
+      fetchUserStats();
+    } catch (err) {
+      console.error("Error acknowledging trade", err);
+    }
+  };
+
+  const handleTrade = async (e) => {
     e.preventDefault();
+    if (!userEmail) {
+      setTradeMsg({ text: "Please log in first", type: "error" });
+      return;
+    }
     const amt = parseFloat(tradeAmount);
     if (isNaN(amt) || amt <= 0) {
       setTradeMsg({ text: "Please enter a valid amount", type: "error" });
       return;
     }
 
-    const coinPrice = prices[tradeCoin]?.usd || livePrice || 1;
-    const coinSymbol = COINS.find(c => c.id === tradeCoin)?.symbol.toLowerCase();
-
-    if (tradeType === "buy") {
-      if (amt > portfolio.usd) {
-        setTradeMsg({ text: "Insufficient USD balance to buy!", type: "error" });
-        return;
-      }
-      const quantity = amt / coinPrice;
-      setPortfolio(prev => ({
-        ...prev,
-        usd: Number((prev.usd - amt).toFixed(2)),
-        [coinSymbol]: Number((prev[coinSymbol] + quantity).toFixed(6))
-      }));
-      setTradeMsg({ text: `Success! Bought ${quantity.toFixed(4)} ${coinSymbol.toUpperCase()}`, type: "success" });
-    } else {
-      const coinHolding = portfolio[coinSymbol] || 0;
-      const coinValue = coinHolding * coinPrice;
-      if (amt > coinValue) {
-        setTradeMsg({ text: `Insufficient holdings! You only have $${coinValue.toFixed(2)} worth of ${coinSymbol.toUpperCase()}`, type: "error" });
-        return;
-      }
-      const quantity = amt / coinPrice;
-      setPortfolio(prev => ({
-        ...prev,
-        usd: Number((prev.usd + amt).toFixed(2)),
-        [coinSymbol]: Number((prev[coinSymbol] - quantity).toFixed(6))
-      }));
-      setTradeMsg({ text: `Success! Sold ${quantity.toFixed(4)} ${coinSymbol.toUpperCase()}`, type: "success" });
+    if (amt > availableBalance) {
+      setTradeMsg({ text: `Insufficient balance! Available balance is ₹${availableBalance.toLocaleString("en-IN")}`, type: "error" });
+      return;
     }
-    setTradeAmount("");
+
+    try {
+      const coinSymbol = COINS.find(c => c.id === tradeCoin)?.symbol;
+      await axios.post(`${API_BASE_URL}/api/trades`, {
+        userEmail,
+        amount: amt,
+        coin: coinSymbol,
+        type: tradeType
+      });
+      setTradeMsg({ text: "Trade initialized successfully!", type: "success" });
+      setTradeAmount("");
+      fetchUserStats();
+    } catch (err) {
+      setTradeMsg({ text: err.response?.data?.message || "Failed to place trade", type: "error" });
+    }
     setTimeout(() => setTradeMsg({ text: "", type: "" }), 4000);
   };
 
@@ -132,13 +238,21 @@ export default function Graph() {
   };
 
   // ── Fetch chart for selected coin ─────────────────────────────────────────
-  const fetchChart = async (coinId) => {
+  const fetchChart = async (coinId, tf = timeframe) => {
     try {
+      let days = 1;
+      if (tf === "1W") days = 7;
+      else if (tf === "30D") days = 30;
+
       const res = await axios.get(
         `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart`,
-        { params: { vs_currency: "usd", days: 1 } }
+        { params: { vs_currency: "usd", days } }
       );
-      const pts = res.data.prices;
+      let pts = res.data.prices;
+      if (tf === "1H") {
+        pts = pts.slice(-12); // Last 12 data points (approx. 1 hour with 5-min intervals)
+      }
+
       const latestPrice = pts[pts.length - 1][1];
       setLivePrice(latestPrice);
       if (prevPrice.current !== null) {
@@ -146,19 +260,40 @@ export default function Graph() {
       }
       prevPrice.current = latestPrice;
 
+      const brandColor = COINS.find(c => c.id === coinId)?.color || "#06B6D4";
+
       setChartData({
         labels: pts.map(p => {
           const d = new Date(p[0]);
-          return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+          if (tf === "1H" || tf === "24H") {
+            return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+          } else if (tf === "1W") {
+            return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getHours()}:00`;
+          } else {
+            return `${d.getDate()} ${d.toLocaleDateString(undefined, { month: "short" })}`;
+          }
         }),
         datasets: [{
           label: coinId.toUpperCase(),
           data: pts.map(p => p[1]),
-          borderColor: COINS.find(c => c.id === coinId)?.color || "#06B6D4",
-          backgroundColor: "transparent",
-          tension: 0.4,
+          borderColor: brandColor,
           borderWidth: 2,
+          tension: 0.2, // Smoother TradingView tension
           pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: brandColor,
+          pointHoverBorderColor: "#FFFFFF",
+          pointHoverBorderWidth: 2,
+          fill: true,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return "transparent";
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, brandColor + "25"); // 14% brand color opacity
+            gradient.addColorStop(1, brandColor + "00"); // 0% opacity
+            return gradient;
+          },
         }],
       });
     } catch (_) {}
@@ -194,10 +329,10 @@ export default function Graph() {
     fetchPrices();
     fetchMarket();
     fetchMovers();
-    fetchChart(selectedCoin);
+    fetchChart(selectedCoin, timeframe);
 
     const priceInterval  = setInterval(fetchPrices, 30000);
-    const chartInterval  = setInterval(() => fetchChart(selectedCoin), 30000);
+    const chartInterval  = setInterval(() => fetchChart(selectedCoin, timeframe), 30000);
     const orderInterval  = setInterval(updateOrderBook, 1200);
     const tradeInterval  = setInterval(addTrade, 800);
 
@@ -207,7 +342,7 @@ export default function Graph() {
       clearInterval(orderInterval);
       clearInterval(tradeInterval);
     };
-  }, [selectedCoin]);
+  }, [selectedCoin, timeframe]);
 
   const coin = COINS.find(c => c.id === selectedCoin);
 
@@ -326,6 +461,24 @@ export default function Graph() {
                     : <FaArrowDown className="text-red-400" />}
                 </div>
               </div>
+
+              {/* TradingView-style Timeline selectors */}
+              <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 shrink-0 self-start sm:self-auto">
+                {["1H", "24H", "1W", "30D"].map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeframe(tf)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      timeframe === tf
+                        ? "bg-cyan-500 text-slate-950 font-black shadow shadow-cyan-500/25"
+                        : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 px-3 py-1.5 rounded-xl self-start sm:self-auto">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                 <span className="text-green-400 text-xs font-semibold">LIVE</span>
@@ -335,16 +488,50 @@ export default function Graph() {
             {/* Chart */}
             <div className="h-72">
               {chartData ? (
-                <Line data={chartData} options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  animation: { duration: 300 },
-                  plugins: { legend: { display: false } },
-                  scales: {
-                    x: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6B7280", maxTicksLimit: 8, font: { size: 10 } } },
-                    y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#6B7280", font: { size: 10 } } },
-                  },
-                }} />
+                <Line 
+                  data={chartData} 
+                  plugins={[crosshairPlugin]}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 300 },
+                    interaction: {
+                      mode: 'index',
+                      intersect: false,
+                    },
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        backgroundColor: "#0B1120",
+                        titleColor: "#94A3B8",
+                        bodyColor: "#FFFFFF",
+                        borderColor: "rgba(255, 255, 255, 0.1)",
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        titleFont: { size: 10, family: 'Inter, sans-serif' },
+                        bodyFont: { size: 12, weight: 'bold', family: 'Inter, sans-serif' },
+                        callbacks: {
+                          label: (context) => ` Price: $${Number(context.raw).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        }
+                      }
+                    },
+                    scales: {
+                      x: {
+                        grid: { color: "rgba(255, 255, 255, 0.04)", borderDash: [3, 3], drawTicks: false },
+                        ticks: { color: "#94A3B8", maxTicksLimit: 8, font: { size: 9, family: 'Inter, sans-serif' } }
+                      },
+                      y: {
+                        grid: { color: "rgba(255, 255, 255, 0.04)", borderDash: [3, 3], drawTicks: false },
+                        ticks: {
+                          color: "#94A3B8",
+                          font: { size: 9, family: 'Inter, sans-serif' },
+                          callback: (value) => "$" + Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                        }
+                      },
+                    },
+                  }} 
+                />
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
@@ -400,14 +587,30 @@ export default function Graph() {
           </div>
         </div>
 
-        {/* ── Simulated Trading & Portfolio ──────────────────────────────────── */}
+        {/* ── Real Trading & Balance Portfolio ──────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* Trading Form */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 relative backdrop-blur-md">
             <h3 className="text-sm font-bold mb-4 text-gray-300 flex items-center gap-2">
-              <FaCoins className="text-cyan-400" /> Simulated Spot Trading
+              <FaCoins className="text-cyan-400" /> Spot Trading
             </h3>
             
+            {/* Ongoing Trade Countdown Banner */}
+            {countdown && (
+              <div className="bg-cyan-500/10 border border-cyan-400/30 rounded-xl p-4 text-center space-y-2 mb-4">
+                <div className="flex items-center justify-center gap-2 text-cyan-400 font-bold text-sm">
+                  <FaClock className="animate-spin" style={{ animationDuration: '6s' }} /> 
+                  <span>Trade is Ongoing</span>
+                </div>
+                <p className="text-xs text-gray-300">
+                  Wait for 60 minutes. Your trade is ongoing and will complete in 60 minutes.
+                </p>
+                <div className="text-2xl font-black text-white tracking-widest bg-cyan-950/40 border border-cyan-800/30 rounded-lg py-2 max-w-[200px] mx-auto">
+                  {String(countdown.minutes).padStart(2, "0")}:{String(countdown.seconds).padStart(2, "0")}
+                </div>
+              </div>
+            )}
+
             {tradeMsg.text && (
               <div className={`mb-4 p-3 rounded-xl border text-xs font-semibold text-center ${
                 tradeMsg.type === "success" 
@@ -450,9 +653,9 @@ export default function Graph() {
                 <div>
                   <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Asset</label>
                   <select
-                    value={tradeCoin}
-                    onChange={e => setTradeCoin(e.target.value)}
-                    className="w-full bg-[#0B1120] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-400/50 outline-none cursor-pointer font-semibold"
+                     value={tradeCoin}
+                     onChange={e => setTradeCoin(e.target.value)}
+                     className="w-full bg-[#0B1120] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-cyan-400/50 outline-none cursor-pointer font-semibold"
                   >
                     {COINS.map(c => (
                       <option key={c.id} value={c.id} className="bg-[#020817]">
@@ -462,16 +665,16 @@ export default function Graph() {
                   </select>
                 </div>
 
-                {/* Amount in USD */}
+                {/* Amount in INR */}
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Amount (USD)</label>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Amount (INR)</label>
                   <div className="flex items-center bg-[#0B1120] border border-white/10 focus-within:border-cyan-400/50 rounded-xl px-4 py-2.5 transition-all">
-                    <span className="text-gray-600 text-xs">$</span>
+                    <span className="text-gray-500 text-xs">₹</span>
                     <input
                       type="number"
                       value={tradeAmount}
                       onChange={e => setTradeAmount(e.target.value)}
-                      placeholder="e.g. 500"
+                      placeholder="e.g. 5000"
                       className="bg-transparent outline-none w-full ml-2 text-white placeholder-gray-700 text-sm animate-none"
                       required
                     />
@@ -492,64 +695,69 @@ export default function Graph() {
             </form>
           </div>
 
-          {/* Portfolio Dashboard */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-                <FaChartLine className="text-cyan-400" /> Your Simulated Portfolio
+          {/* Account Balance Dashboard */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md flex flex-col justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2 mb-4">
+                <FaChartLine className="text-cyan-400" /> Account Balance Summary
               </h3>
-              <button
-                onClick={() => {
-                  if (window.confirm("Reset portfolio back to $10,000 USD?")) {
-                    setPortfolio({ usd: 10000, btc: 0, eth: 0, sol: 0, xrp: 0 });
-                  }
-                }}
-                className="text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
-              >
-                Reset Balance
-              </button>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-white/3 border border-white/5 rounded-xl p-4">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold">Simulated Cash</p>
-                <p className="text-lg font-black text-white mt-1">${portfolio.usd.toLocaleString()}</p>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-white/3 border border-white/5 rounded-xl p-4">
+                  <p className="text-[10px] text-gray-500 uppercase font-semibold">Tradeable Cash</p>
+                  <p className="text-lg font-black text-cyan-400 mt-1">₹{availableBalance.toLocaleString("en-IN")}</p>
+                </div>
+                <div className="bg-white/3 border border-white/5 rounded-xl p-4">
+                  <p className="text-[10px] text-gray-500 uppercase font-semibold">Active Margin</p>
+                  <p className="text-lg font-black text-yellow-400 mt-1">₹{totalOngoingTradesAmount.toLocaleString("en-IN")}</p>
+                </div>
               </div>
-              <div className="bg-white/3 border border-white/5 rounded-xl p-4">
-                <p className="text-[10px] text-gray-500 uppercase font-semibold">Total Portfolio Value</p>
-                <p className="text-lg font-black text-cyan-400 mt-1">
-                  ${(
-                    portfolio.usd +
-                    portfolio.btc * (prices.bitcoin?.usd || 0) +
-                    portfolio.eth * (prices.ethereum?.usd || 0) +
-                    portfolio.sol * (prices.solana?.usd || 0) +
-                    portfolio.xrp * (prices.ripple?.usd || 0)
-                  ).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                </p>
+
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                <div className="bg-white/2 border border-white/5 rounded-xl px-4 py-2.5 flex justify-between items-center text-xs">
+                  <span className="text-gray-400">Total Deposited</span>
+                  <span className="font-bold text-white">₹{totalDeposited.toLocaleString("en-IN")}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl px-4 py-2.5 flex justify-between items-center text-xs">
+                  <span className="text-gray-400">Trading Profit</span>
+                  <span className="font-bold text-green-400">+₹{totalTradeProfits.toLocaleString("en-IN")}</span>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 max-h-40 overflow-y-auto custom-scroll pr-1">
-              {[
-                { sym: "BTC", name: "Bitcoin", amt: portfolio.btc, price: prices.bitcoin?.usd || 0, color: "text-orange-400" },
-                { sym: "ETH", name: "Ethereum", amt: portfolio.eth, price: prices.ethereum?.usd || 0, color: "text-blue-400" },
-                { sym: "SOL", name: "Solana", amt: portfolio.sol, price: prices.solana?.usd || 0, color: "text-purple-400" },
-                { sym: "XRP", name: "Ripple", amt: portfolio.xrp, price: prices.ripple?.usd || 0, color: "text-cyan-400" },
-              ].map(asset => {
-                const value = asset.amt * asset.price;
-                return (
-                  <div key={asset.sym} className="flex justify-between items-center bg-white/2 border border-white/5 rounded-xl px-4 py-2 text-xs">
-                    <div>
-                      <span className={`font-bold ${asset.color}`}>{asset.sym}</span>
-                      <span className="text-gray-500 ml-2">{asset.name}</span>
+            {/* Recent user trades list */}
+            <div>
+              <p className="text-xs text-gray-400 mb-2 font-bold">Recent Trade History</p>
+              {loadingStats ? (
+                <p className="text-xs text-gray-500">Loading trades...</p>
+              ) : userTrades.length === 0 ? (
+                <p className="text-xs text-gray-500 py-4 text-center border border-dashed border-white/10 rounded-xl">No trade history yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-36 overflow-y-auto custom-scroll pr-1">
+                  {userTrades.slice(0, 4).map(trade => (
+                    <div key={trade._id} className="flex justify-between items-center bg-white/2 border border-white/5 rounded-xl px-4 py-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] uppercase ${trade.type === "buy" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                          {trade.type}
+                        </span>
+                        <span className="font-bold text-white">{trade.coin}</span>
+                        <span className="text-gray-500">₹{trade.amount.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="text-right">
+                        {trade.status === "ongoing" ? (
+                          <span className="text-yellow-500 text-[10px] flex items-center gap-1 font-semibold">
+                            <FaClock className="animate-spin text-[8px]" /> Ongoing
+                          </span>
+                        ) : (
+                          <span className="text-green-400 font-bold">
+                            +₹{(trade.profitAmount || 0).toLocaleString("en-IN")}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-white">{asset.amt.toFixed(4)} {asset.sym}</p>
-                      <p className="text-[10px] text-gray-500">${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                    </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -636,6 +844,46 @@ export default function Graph() {
         </div>
 
       </div>
+
+      {/* ── Congratulations Modal ───────────────────────────────────────── */}
+      {showCongratulations && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
+          <div className="bg-[#0B1120] border border-green-500/30 rounded-3xl w-full max-w-md shadow-2xl p-6 text-center space-y-6 animate-modal-pop relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-green-500 via-emerald-400 to-green-500 animate-pulse" />
+            <div className="mx-auto w-16 h-16 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-400 text-3xl">
+              🎉
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-green-400">Congratulations!</h2>
+              <p className="text-gray-400 text-xs mt-1">Your trade has completed successfully!</p>
+            </div>
+            <div className="bg-white/3 border border-white/5 rounded-2xl p-4 space-y-2">
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Asset Traded</span>
+                <span className="font-bold text-white uppercase">{showCongratulations.coin}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Investment Amount</span>
+                <span className="font-bold text-white">₹{showCongratulations.amount.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="border-t border-white/5 my-2 pt-2 flex justify-between items-center">
+                <span className="text-sm text-gray-400 font-semibold">Profit Earned</span>
+                <span className="text-xl font-black text-green-400">+₹{showCongratulations.profitAmount.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              Your trade principal of ₹{showCongratulations.amount.toLocaleString("en-IN")} plus your profit has been credited back to your account balance.
+            </p>
+            <button
+              onClick={() => handleAcknowledgeTrade(showCongratulations._id)}
+              className="w-full bg-green-500 hover:bg-green-400 text-slate-950 font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-green-500/10 cursor-pointer"
+            >
+              Acknowledge & Continue
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

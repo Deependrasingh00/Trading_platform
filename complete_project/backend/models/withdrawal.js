@@ -15,6 +15,7 @@ const withdrawalSchema = new mongoose.Schema(
       default: "Pending",
     },
     step: { type: Number, default: 0 },
+    screenshotUrl: { type: String, default: "" },
     // Admin custom message for each step (optional)
     customMessage: { type: String, default: "" },
     // Timestamp when step 4 was approved (for 24hr countdown timer)
